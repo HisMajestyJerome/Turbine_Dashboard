@@ -159,12 +159,23 @@ if uploaded_file is not None:
         "Select metric to visualize for all turbines",
         ["Power Avg [kW]", "Wind Speed Avg [m/s]", "Blade Angle 1 [°]", "Generator Speed Avg [min-1]"]
     )
+    
+    
+    # Add this below your turbine selection and before plotting:
 
-    st.subheader(f"Single Turbine: {selected_turbine}")
-    st.plotly_chart(create_single_turbine_figure(df, selected_turbine), use_container_width=True)
+    show_table = st.checkbox("Show as Table")
 
-    st.subheader("All Turbines Overview")
-    st.plotly_chart(create_all_turbines_figure(df, selected_metric), use_container_width=True)
+    if show_table:
+        # Show the single turbine data table (scrollable)
+        df_single = df[df["Power Plant"] == selected_turbine]
+        st.dataframe(df_single, height=400)  # height makes it scrollable if needed
+    else:
+        # Show the plots
+        st.subheader(f"Single Turbine: {selected_turbine}")
+        st.plotly_chart(create_single_turbine_figure(df, selected_turbine), use_container_width=True)
+
+        st.subheader("All Turbines Overview")
+        st.plotly_chart(create_all_turbines_figure(df, selected_metric), use_container_width=True)
 
 else:
     st.info("Please upload a CSV file to begin.")
