@@ -3,15 +3,25 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.colors
 from sklearn.preprocessing import MinMaxScaler
-import plotly.graph_objs as go
 import numpy as np
 import math
-from sklearn.preprocessing import MinMaxScaler
+from datetime import datetime
 
 st.set_page_config(layout="wide")
 
 # App title
 st.title("Turbine Data Visualization")
+
+
+
+#constant color for single turbine plot
+default_colors = {
+        "Wind Speed Avg [m/s]": "blue",
+        "Power Avg [kW]": "red",
+        "Blade Angle 1 [°]": "green",
+        "Generator Speed Avg [min-1]": "purple"
+    }
+
 
 # -------------------------------------------------------------------------- Utility Functions -----------------------------------------------------
 
@@ -207,7 +217,7 @@ def create_all_turbines_figure(df, selected_metric):
     )
     return fig
 
-def create_single_turbine_figure(df, selected_turbine):
+def create_single_turbine_figure(df, selected_turbine, colors=None):
     fig = go.Figure()
     df_plant = df[df["Power Plant"] == selected_turbine].copy()
     if df_plant.empty:
@@ -227,13 +237,10 @@ def create_single_turbine_figure(df, selected_turbine):
     df_resampled = df_plant.set_index("Timestamp").reindex(timestamps).reset_index()
     df_resampled.rename(columns={"index": "Timestamp"}, inplace=True)
 
-    # Define your manual colors here (same order as traces)
-    colors = {
-        "Wind Speed Avg [m/s]": "blue",
-        "Power Avg [kW]": "red",
-        "Blade Angle 1 [°]": "green",
-        "Generator Speed Avg [min-1]": "purple"
-    }
+    # Default colors if none provided
+    
+    if colors is None:
+        colors = default_colors
 
     traces = [
         ("Wind Speed Avg [m/s]", df_resampled["Wind Speed Avg [m/s]"], df_resampled["Wind Speed Avg [m/s]_Scaled"], "Wind Speed Avg: %{customdata} m/s"),
@@ -281,26 +288,64 @@ if uploaded_file is not None:
 
     
     # Add this below your turbine selection and before plotting:
-
     show_wind = st.checkbox("Run Wind Cutoff Calculator")
     
-    
+
     if show_wind:
         fig1, fig2 = wind_cutoff_calculator(df, selected_turbine)
         st.plotly_chart(fig1, use_container_width=True)
         st.plotly_chart(fig2, use_container_width=True)
 
     if not show_wind:
-        show_table = st.checkbox("Show as Table")
+        col1,col2 = st.columns([2,1])
+        with col1:
+            show_table = st.checkbox("Show as Table")
+        with col2:
+            with st.expander("Color Customizer", expanded=False):
+                # Color picker widget
+                col1, col2 = st.columns([2,1])
+                with col1:
+                    default_colors["Wind Speed Avg [m/s]"] = st.color_picker("Wind Speed", "#5542fa") # wind
+                    default_colors["Power Avg [kW]"] = st.color_picker("Power Avg", "#ff4040") # wind
+                with col2:
+                    default_colors["Blade Angle 1 [°]"] = st.color_picker("Blade Angle", "#58aa48") # wind
+                    default_colors["Generator Speed Avg [min-1]"] = st.color_picker("Generator Speed Avg", "#a139aa") # wind
         if show_table:
             # Show the single turbine data table (scrollable)
-            df_single = df[df["Power Plant"] == selected_turbine]
-            st.dataframe(df_single, height=400)  # height makes it scrollable if needed
+            df_single = df[df["Power Plant"] == selected_turbine].copy()
+            df_single["Timestamp"] = pd.to_datetime(df_single["Timestamp"])
+
+            # Get min/max timestamps for widget limits
+            min_time = df_single["Timestamp"].min()
+            max_time = df_single["Timestamp"].max()
+
+            # Let user pick date and time separately for start and end
+            st.write("### Select Time Range")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                start_date = st.date_input("Start Date", value=min_time.date(), min_value=min_time.date(), max_value=max_time.date())
+                start_time = st.time_input("Start Time", value=min_time.time())
+
+            with col2:
+                end_date = st.date_input("End Date", value=max_time.date(), min_value=min_time.date(), max_value=max_time.date())
+                end_time = st.time_input("End Time", value=max_time.time())
+
+            # Combine date and time into full datetime
+            start_datetime = datetime.combine(start_date, start_time)
+            end_datetime = datetime.combine(end_date, end_time)
+
+            # Filter the DataFrame
+            df_filtered = df_single[(df_single["Timestamp"] >= start_datetime) & (df_single["Timestamp"] <= end_datetime)]
+
+            # Display filtered data
+            #st.write(f"Showing data from **{start_datetime}** to **{end_datetime}**:")
+            st.dataframe(df_filtered, height=400)
         else:
-            # Show the plots
             st.subheader(f"Single Turbine: {selected_turbine}")
-            st.plotly_chart(create_single_turbine_figure(df, selected_turbine), use_container_width=True)
-            # Metric selector for all turbines plot
+            st.plotly_chart(create_single_turbine_figure(df, selected_turbine, colors=default_colors), use_container_width=True)
+            # All turbines plot
             selected_metric = st.selectbox(
                 "Select metric to visualize for all turbines",
                 ["Power Avg [kW]", "Wind Speed Avg [m/s]", "Blade Angle 1 [°]", "Generator Speed Avg [min-1]"]
