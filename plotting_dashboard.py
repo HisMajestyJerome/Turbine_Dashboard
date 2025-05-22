@@ -6,6 +6,7 @@ from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 import math
 from datetime import datetime
+from datetime import timedelta
 
 st.set_page_config(layout="wide")
 
@@ -269,7 +270,11 @@ def create_single_turbine_figure(df, selected_turbine, colors=None):
     )
     return fig
 
+def _set_last_edited_to_manual(): #sets updated for table
+    st.session_state.last_edited = "manual"
 
+def _set_last_edited_to_slider():
+    st.session_state.last_edited = "slider"
 # --- Upload Section ---
 uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
 
@@ -282,14 +287,26 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Failed to load file: {e}")
         st.stop()
-    
+
     turbines = df["Power Plant"].unique()
     
     if "turbine_index" not in st.session_state:
         st.session_state.turbine_index = 0
 
-    selected_turbine = st.selectbox("Select a turbine", turbines, index=st.session_state.turbine_index)
-    
+    col1,col2 = st.columns([4,1])
+    with col1:
+        selected_turbine = st.selectbox("Select a turbine", turbines, index=st.session_state.turbine_index)
+    with col2:
+        with st.expander("Color Customizer", expanded=False):
+                # Color picker widget
+                col1, col2 = st.columns([2,1])
+                with col1:
+                    default_colors["Wind Speed Avg [m/s]"] = st.color_picker("Wind Speed", "#5542fa") # wind
+                    default_colors["Power Avg [kW]"] = st.color_picker("Power Avg", "#ff4040") # wind
+                with col2:
+                    default_colors["Blade Angle 1 [°]"] = st.color_picker("Blade Angle", "#58aa48") # wind
+                    default_colors["Generator Speed Avg [min-1]"] = st.color_picker("Generator Speed Avg", "#a139aa") # wind
+                    
     col1,col2,col3 = st.columns([1,1,12])
     with col1:
         if st.button("Previous"):
@@ -298,8 +315,7 @@ if uploaded_file is not None:
     with col2:
         if st.button("Next"):
             st.session_state.turbine_index = (st.session_state.turbine_index + 1) % len(turbines)
-            st.rerun()  # Force rerun to update the selectbox     
-            
+            st.rerun()
     # Add this below your turbine selection and before plotting:
     show_wind = st.checkbox("Run Wind Cutoff Calculator")
     
@@ -314,47 +330,86 @@ if uploaded_file is not None:
         with col1:
             show_table = st.checkbox("Show as Table")
         with col2:
-            with st.expander("Color Customizer", expanded=False):
-                # Color picker widget
-                col1, col2 = st.columns([2,1])
-                with col1:
-                    default_colors["Wind Speed Avg [m/s]"] = st.color_picker("Wind Speed", "#5542fa") # wind
-                    default_colors["Power Avg [kW]"] = st.color_picker("Power Avg", "#ff4040") # wind
-                with col2:
-                    default_colors["Blade Angle 1 [°]"] = st.color_picker("Blade Angle", "#58aa48") # wind
-                    default_colors["Generator Speed Avg [min-1]"] = st.color_picker("Generator Speed Avg", "#a139aa") # wind
+            pass
+                
+
         if show_table:
-            # Show the single turbine data table (scrollable)
+            # initialize if missing
+            if "last_edited" not in st.session_state:
+                st.session_state.last_edited = None
+
             df_single = df[df["Power Plant"] == selected_turbine].copy()
             df_single["Timestamp"] = pd.to_datetime(df_single["Timestamp"])
+            min_time = df_single["Timestamp"].min().to_pydatetime()
+            max_time = df_single["Timestamp"].max().to_pydatetime()
 
-            # Get min/max timestamps for widget limits
-            min_time = df_single["Timestamp"].min()
-            max_time = df_single["Timestamp"].max()
-
-            # Let user pick date and time separately for start and end
             st.write("### Select Time Range")
-
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns([1,5,1])
 
             with col1:
-                start_date = st.date_input("Start Date", value=min_time.date(), min_value=min_time.date(), max_value=max_time.date())
-                start_time = st.time_input("Start Time", value=min_time.time())
+                # manual start date/time
+                start_date = st.date_input(
+                    "Start Date",
+                    min_value=min_time.date(),
+                    max_value=max_time.date(),
+                    value=min_time.date(),
+                    key="man_start_date",
+                    on_change=_set_last_edited_to_manual
+                )
+                start_clock = st.time_input(
+                    "Start Time",
+                    value=min_time.time(),
+                    key="man_start_time",
+                    on_change=_set_last_edited_to_manual
+                )
+                manual_start = datetime.combine(start_date, start_clock)
 
             with col2:
-                end_date = st.date_input("End Date", value=max_time.date(), min_value=min_time.date(), max_value=max_time.date())
-                end_time = st.time_input("End Time", value=max_time.time())
+                # slider
+                slider_start, slider_end = st.slider(
+                    "Or use the slider",
+                    value=(min_time, max_time),
+                    min_value=min_time,
+                    max_value=max_time,
+                    format="YYYY-MM-DD HH:mm:ss",
+                    step=timedelta(minutes=10),
+                    key="time_slider",
+                    on_change=_set_last_edited_to_slider
+                )
 
-            # Combine date and time into full datetime
-            start_datetime = datetime.combine(start_date, start_time)
-            end_datetime = datetime.combine(end_date, end_time)
+            with col3:
+                # manual end date/time
+                end_date = st.date_input(
+                    "End Date",
+                    min_value=min_time.date(),
+                    max_value=max_time.date(),
+                    value=max_time.date(),
+                    key="man_end_date",
+                    on_change=_set_last_edited_to_manual
+                )
+                end_clock = st.time_input(
+                    "End Time",
+                    value=max_time.time(),
+                    key="man_end_time",
+                    on_change=_set_last_edited_to_manual
+                )
+                manual_end = datetime.combine(end_date, end_clock)
 
-            # Filter the DataFrame
-            df_filtered = df_single[(df_single["Timestamp"] >= start_datetime) & (df_single["Timestamp"] <= end_datetime)]
+            # choose which to use based on last interaction
+            if st.session_state.last_edited == "manual":
+                start_time, end_time = manual_start, manual_end
+            else:
+                start_time, end_time = slider_start, slider_end
 
-            # Display filtered data
-            #st.write(f"Showing data from **{start_datetime}** to **{end_datetime}**:")
+            st.write(f"Showing data from **{start_time}** to **{end_time}**")
+
+            df_filtered = df_single[
+                (df_single["Timestamp"] >= start_time) &
+                (df_single["Timestamp"] <= end_time)
+            ]
             st.dataframe(df_filtered, height=400)
+
+
         else:
             st.subheader(f"Single Turbine: {selected_turbine}")
             st.plotly_chart(create_single_turbine_figure(df, selected_turbine, colors=default_colors), use_container_width=True)
