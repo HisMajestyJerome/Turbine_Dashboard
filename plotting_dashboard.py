@@ -282,11 +282,24 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Failed to load file: {e}")
         st.stop()
-
-    turbines = df["Power Plant"].unique()
-    selected_turbine = st.selectbox("Select a turbine", turbines)
-
     
+    turbines = df["Power Plant"].unique()
+    
+    if "turbine_index" not in st.session_state:
+        st.session_state.turbine_index = 0
+
+    selected_turbine = st.selectbox("Select a turbine", turbines, index=st.session_state.turbine_index)
+    
+    col1,col2,col3 = st.columns([1,1,12])
+    with col1:
+        if st.button("Previous"):
+            st.session_state.turbine_index = (st.session_state.turbine_index - 1) % len(turbines)
+            st.rerun()  # Force rerun to update the selectbox
+    with col2:
+        if st.button("Next"):
+            st.session_state.turbine_index = (st.session_state.turbine_index + 1) % len(turbines)
+            st.rerun()  # Force rerun to update the selectbox     
+            
     # Add this below your turbine selection and before plotting:
     show_wind = st.checkbox("Run Wind Cutoff Calculator")
     
