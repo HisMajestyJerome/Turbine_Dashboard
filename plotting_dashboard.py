@@ -9,19 +9,18 @@ from datetime import datetime
 from datetime import timedelta
 
 st.set_page_config(layout="wide")
-
-# App title
 st.title("Turbine Data Visualization")
 
 
 
 #constant color for single turbine plot
 default_colors = {
-        "Wind Speed Avg [m/s]": "blue",
-        "Power Avg [kW]": "red",
-        "Blade Angle 1 [°]": "green",
-        "Generator Speed Avg [min-1]": "purple"
-    }
+    "Wind Speed Avg [m/s]": "#4E4EF8",  # blue
+    "Power Avg [kW]":        "#F73D3D",  # red
+    "Blade Angle 1 [°]":     "#23A823",  # green
+    "Generator Speed Avg [min-1]": "#8D228D"  # purple
+}
+
 
 
 # -------------------------------------------------------------------------- Utility Functions -----------------------------------------------------
@@ -29,10 +28,10 @@ default_colors = {
 def wind_cutoff_calculator(df, selected_turbine):
     df = df[df["Power Plant"] == selected_turbine].copy()
     df['Generator Speed Avg [min-1]'] = df['Generator Speed Avg [min-1]'].astype(int)
-    df = df[df['Generator Speed Avg [min-1]'] > 300]
+    df_coeffs = df[df['Generator Speed Avg [min-1]'] > 100]
 
-    x = df['Wind Speed Avg [m/s]']
-    y = df['Power Avg [kW]']
+    x = df_coeffs['Wind Speed Avg [m/s]']
+    y = df_coeffs['Power Avg [kW]']
     coeffs = np.polyfit(x, y, deg=2)
     fit_fn = np.poly1d(coeffs)
 
@@ -44,7 +43,13 @@ def wind_cutoff_calculator(df, selected_turbine):
         elif delta == 0:
             return [-B / (2*A)]
         else:
-            return [(-B - math.sqrt(delta)) / (2*A), (-B + math.sqrt(delta)) / (2*A)]
+            zeroes = [(-B - math.sqrt(delta)) / (2*A), (-B + math.sqrt(delta)) / (2*A)]
+            if A > 0:
+                return [max(zeroes)]
+            if A < 0:
+                return [min(zeroes)]
+            else:
+                return zeroes
 
     zeroes = solve_x(coeffs)
 
@@ -99,50 +104,56 @@ def wind_cutoff_calculator(df, selected_turbine):
     power_off = [p if w < zero_point_scaled else None for w, p in zip(wind, power)]
 
     # Plot 2: Scaled time series
+    # Plot 2: Scaled time series
     fig2 = go.Figure()
-    
-    #fig2.add_trace(go.Scatter(x=time, y=power, mode='lines', name='Power [kW] (Scaled)', line=dict(color='pink')))
-    #fig2.add_trace(go.Scatter(x=time, y=wind, mode='lines', name='Wind Speed [m/s] (Scaled)', line=dict(color='blue')))
-    #fig2.add_trace(go.Scatter(x=time, y=power_off, mode='lines', name='Power Off', line=dict(color='red')))
-    
-    colors = {
-        "Wind Speed Avg [m/s]": "blue",
-        "Power Avg [kW]": "yellow",
-        "Power Off": "red"
-    }
-    traces = [
-        ("Wind Speed Avg [m/s]", wind , "Wind Speed Avg: %{customdata} m/s"),
-        ("Power Avg [kW]", power, "Power Avg: %{customdata} kW"),
-        ("Power Off", power_off, "Power off due to wind")
-    ]
-    
-    
-    for name, scaled, hover_text in traces:
-        fig2.add_trace(go.Scatter(
-            x=df_resampled["Timestamp"],
-            y=scaled,
-            mode="lines",
-            name=f"{name}",
-            hovertemplate=f"{hover_text}<extra></extra>",
-            customdata=scaled,
-            connectgaps=False,
-            line=dict(color=colors.get(name, "grey"))  # use color from dict or grey as default
-        ))
+
+    # Full series:
+    fig2.add_trace(go.Scatter(
+        x=time, 
+        y=power, 
+        mode='lines', 
+        name='Power [kW] (Scaled)', 
+        line=dict(color='pink')
+    ))
+
+    # Wind series:
+    fig2.add_trace(go.Scatter(
+        x=time, 
+        y=wind, 
+        mode='lines', 
+        name='Wind Speed Avg [m/s] (Scaled)', 
+        line=dict(color='blue')
+    ))
+
+    # Highlighted “off” zones:
+    power_off = [p if w < zero_point_scaled else None for w, p in zip(wind, power)]
+    fig2.add_trace(go.Scatter(
+        x=time, 
+        y=power_off, 
+        mode='lines', 
+        name='Power Off', 
+        line=dict(color='red'),
+        connectgaps=False
+    ))
+
+    # Cut-off line:
     fig2.add_shape(
         type="line",
-        x0=df_resampled["Timestamp"].min(),
-        x1=df_resampled["Timestamp"].max(),
+        x0=time.min(),
+        x1=time.max(),
         y0=zero_point_scaled,
         y1=zero_point_scaled,
         line=dict(color="green", width=2, dash="dash"),
     )
+
     fig2.update_layout(
         title='Scaled Time Series: Power & Wind Speed',
         xaxis_title='Timestamp',
         yaxis_title='Scaled Values',
         template='plotly_white',
-        hovermode='x unified'  # 👈 this is the key
+        hovermode='x unified'
     )
+
 
     return fig1, fig2
 
@@ -270,6 +281,11 @@ def create_single_turbine_figure(df, selected_turbine, colors=None):
     )
     return fig
 
+def _sync_turbine_index():
+        st.session_state.turbine_index = turbines.index(
+            st.session_state.selected_turbine
+        )
+
 def _set_last_edited_to_manual(): #sets updated for table
     st.session_state.last_edited = "manual"
 
@@ -288,37 +304,44 @@ if uploaded_file is not None:
         st.error(f"Failed to load file: {e}")
         st.stop()
 
-    turbines = df["Power Plant"].unique()
-    
+    # After you’ve read in df…
+    turbines = df["Power Plant"].unique().tolist()
+
+    # Initialize our “pointer” if needed
     if "turbine_index" not in st.session_state:
         st.session_state.turbine_index = 0
 
-    col1,col2 = st.columns([4,1])
+    # Top row: selector + color customizer
+    col1, col2 = st.columns([4, 1])
     with col1:
-        selected_turbine = st.selectbox("Select a turbine", turbines, index=st.session_state.turbine_index)
+        selected_turbine = st.selectbox(
+            "Select a turbine",
+            turbines,
+            index=st.session_state.turbine_index,
+            key="selected_turbine",
+            on_change=_sync_turbine_index,
+        )
+        # Next row: Previous / Next buttons
+        prev_col, next_col, _ = st.columns([1, 1, 12])
+        with prev_col:
+            if st.button("Previous"):
+                st.session_state.turbine_index = (st.session_state.turbine_index - 1) % len(turbines)
+                st.rerun()
+        with next_col:
+            if st.button("Next"):
+                st.session_state.turbine_index = (st.session_state.turbine_index + 1) % len(turbines)
+                st.rerun()
+
+        
     with col2:
         with st.expander("Color Customizer", expanded=False):
-                # Color picker widget
-                col1, col2 = st.columns([2,1])
-                with col1:
-                    default_colors["Wind Speed Avg [m/s]"] = st.color_picker("Wind Speed", "#5542fa") # wind
-                    default_colors["Power Avg [kW]"] = st.color_picker("Power Avg", "#ff4040") # wind
-                with col2:
-                    default_colors["Blade Angle 1 [°]"] = st.color_picker("Blade Angle", "#58aa48") # wind
-                    default_colors["Generator Speed Avg [min-1]"] = st.color_picker("Generator Speed Avg", "#a139aa") # wind
-                    
-    col1,col2,col3 = st.columns([1,1,12])
-    with col1:
-        if st.button("Previous"):
-            st.session_state.turbine_index = (st.session_state.turbine_index - 1) % len(turbines)
-            st.rerun()  # Force rerun to update the selectbox
-    with col2:
-        if st.button("Next"):
-            st.session_state.turbine_index = (st.session_state.turbine_index + 1) % len(turbines)
-            st.rerun()
-    # Add this below your turbine selection and before plotting:
-    show_wind = st.checkbox("Run Wind Cutoff Calculator")
+            # automatically generate one picker for each metric
+            for metric, col in default_colors.items():
+                default_colors[metric] = st.color_picker(metric, col)
+
     
+    # And finally your wind‐calculator toggle
+    show_wind = st.checkbox("Run Wind Cutoff Calculator")
 
     if show_wind:
         fig1, fig2 = wind_cutoff_calculator(df, selected_turbine)
@@ -343,7 +366,7 @@ if uploaded_file is not None:
             min_time = df_single["Timestamp"].min().to_pydatetime()
             max_time = df_single["Timestamp"].max().to_pydatetime()
 
-            st.write("### Select Time Range")
+            st.write(f"### Table for {selected_turbine}")
             col1, col2, col3 = st.columns([1,5,1])
 
             with col1:
@@ -412,7 +435,10 @@ if uploaded_file is not None:
 
         else:
             st.subheader(f"Single Turbine: {selected_turbine}")
-            st.plotly_chart(create_single_turbine_figure(df, selected_turbine, colors=default_colors), use_container_width=True)
+            st.plotly_chart(
+                create_single_turbine_figure(df, selected_turbine, colors=default_colors),
+                use_container_width=True
+            )
             # All turbines plot
             selected_metric = st.selectbox(
                 "Select metric to visualize for all turbines",
