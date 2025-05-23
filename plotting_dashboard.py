@@ -8,9 +8,32 @@ import math
 from datetime import datetime
 from datetime import timedelta
 
-st.set_page_config(layout="wide")
 
+credentials = st.secrets["users"]
+# Initialize session state
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+
+# Authentication logic
+def login():
+    username = st.session_state["login_user"]
+    password = st.session_state["login_pass"]
+    if username in credentials and credentials[username] == password:
+        st.session_state.authenticated = True
+        st.session_state.username = username
+    else:
+        st.error("Invalid username or password")
+
+# Show login fields only if not logged in
+if not st.session_state.authenticated:
+    st.text_input("Username", key="login_user")
+    st.text_input("Password", type="password", key="login_pass")
+    st.button("Login", on_click=login)
+    st.stop()
 # App title
+st.set_page_config(layout="wide")
 st.title("Turbine Data Visualization")
 
 
@@ -343,7 +366,7 @@ if uploaded_file is not None:
             min_time = df_single["Timestamp"].min().to_pydatetime()
             max_time = df_single["Timestamp"].max().to_pydatetime()
 
-            st.write("### Select Time Range")
+            st.write(f"### Table for {selected_turbine}")
             col1, col2, col3 = st.columns([1,5,1])
 
             with col1:
