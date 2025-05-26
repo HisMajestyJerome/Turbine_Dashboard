@@ -9,16 +9,19 @@ from datetime import datetime
 from datetime import timedelta
 
 st.set_page_config(layout="wide")
-st.title("Turbine Data Visualization")
-
+#st.title("Vestas | Turbine Data Visualization")
+st.markdown(
+    "<h1 style='color: #005FBD;'>Vestas | Turbine Data Visualization</h1>",
+    unsafe_allow_html=True
+)
 
 
 #constant color for single turbine plot
 default_colors = {
-    "Wind Speed Avg [m/s]": "#4E4EF8",  # blue
-    "Power Avg [kW]":        "#F73D3D",  # red
-    "Blade Angle 1 [°]":     "#23A823",  # green
-    "Generator Speed Avg [min-1]": "#8D228D"  # purple
+    "Wind Speed Avg [m/s]": "#005FBD",  # blue
+    "Power Avg [kW]":        "#CF004C",  # red
+    "Blade Angle 1 [°]":     "#008D47",  # green
+    "Generator Speed Avg [min-1]": "#A70391"  # purple
 }
 
 
@@ -157,7 +160,6 @@ def wind_cutoff_calculator(df, selected_turbine):
 
     return fig1, fig2
 
-# ================================================================================NEW EDIT ==========================================================
 def scale_blade_angle(x):
     if x > 300:
         return abs(360 - x) / 90
@@ -280,6 +282,8 @@ def create_single_turbine_figure(df, selected_turbine, colors=None):
         hovermode="x unified"
     )
     return fig
+
+#=================================================================STREAMLIT INTERFACE ===================================================
 
 def _sync_turbine_index():
         st.session_state.turbine_index = turbines.index(
@@ -446,6 +450,12 @@ if uploaded_file is not None:
             )
             st.subheader("All Turbines Overview")
             st.plotly_chart(create_all_turbines_figure(df, selected_metric), use_container_width=True)
-
+        
+        col1,col2 = st.columns([10,1])
+        with col2:
+            st.write("Created by JEDTL :)")
 else:
     st.info("Please upload a CSV file to begin.")
+    col1,col2 = st.columns([10,1])
+    with col2:
+        st.write("Created by JEDTL :)")
